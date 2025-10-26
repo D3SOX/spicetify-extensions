@@ -22,7 +22,9 @@
 
 	// Settings
 	const STORAGE_KEY_PLACE_LEFT = "quickQueue.placeLeftSide";
+	const STORAGE_KEY_SWAP_BEHAVIOR = "quickQueue.swapBehavior";
 	let placeLeftSide = Spicetify.LocalStorage.get(STORAGE_KEY_PLACE_LEFT) === "1";
+	let swapBehavior = Spicetify.LocalStorage.get(STORAGE_KEY_SWAP_BEHAVIOR) === "1";
 
 	try {
 		if (Spicetify.Menu?.Item) {
@@ -36,12 +38,26 @@
 					Spicetify.showNotification(`Quick Queue placement is now ${placeLeftSide ? "on the left" : "in the right column"}`);
 				}
 			).register();
+
+			new Spicetify.Menu.Item(
+				"Quick Queue: Play next by default",
+				swapBehavior,
+				self => {
+					swapBehavior = !swapBehavior;
+					self.setState(swapBehavior);
+					Spicetify.LocalStorage.set(STORAGE_KEY_SWAP_BEHAVIOR, swapBehavior ? "1" : "0");
+					Spicetify.showNotification(`Quick Queue default action is now ${swapBehavior ? "play next" : "add to queue"}`);
+				}
+			).register();
 		}
 	} catch (error) {
 		// no-op: menu might not be available in all environments
 	}
 
-	const QueueButton = Spicetify.React.memo(({ uri, classList, leftSide }) => {
+	const addToQueueText = Spicetify.Locale._dictionary["contextmenu.add-to-queue"] || "Add to queue";
+	const removeFromQueueText = Spicetify.Locale._dictionary["contextmenu.remove-from-queue"] || "Remove from queue";
+
+	const QueueButton = Spicetify.React.memo(({ uri, classList, leftSide, swapBehavior }) => {
 		const [isQueued, setIsQueued] = Spicetify.React.useState(Spicetify.Platform.PlayerAPI._queue._queueState.queued.some(item => item.uri === uri));
 		const [tippyInstance, setTippyInstance] = Spicetify.React.useState(null);
 		const [isShiftPressed, setIsShiftPressed] = Spicetify.React.useState(false);
@@ -55,14 +71,26 @@
 		const handleClick = async event => {
 			if (isQueued && event.type === "contextmenu") return;
 
-			if (!isQueued && (event.type === "contextmenu" || isShiftPressed)) {
+			// Determine the action based on swap behavior and modifiers
+			const shouldPlayNext = swapBehavior ? 
+				(event.type === "click" && !isShiftPressed) : 
+				(event.type === "contextmenu" || isShiftPressed);
+			
+			const shouldAddToQueue = swapBehavior ? 
+				(event.type === "contextmenu" || isShiftPressed) : 
+				(event.type === "click" && !isShiftPressed);
+
+			if (!isQueued && shouldPlayNext) {
 				event.preventDefault();
 				event.stopPropagation();
 				await addToNext(uri);
 				Spicetify.showNotification("Added to next in queue");
-			} else {
-				Spicetify.Platform.PlayerAPI[isQueued ? "removeFromQueue" : "addToQueue"]([{ uri }]);
-				Spicetify.showNotification(isQueued ? "Removed from queue" : Spicetify.Locale._dictionary["queue.added-to-queue"] || "Added to queue");
+			} else if (!isQueued && shouldAddToQueue) {
+				Spicetify.Platform.PlayerAPI.addToQueue([{ uri }]);
+				Spicetify.showNotification("Added to queue");
+			} else if (isQueued) {
+				Spicetify.Platform.PlayerAPI.removeFromQueue([{ uri }]);
+				Spicetify.showNotification("Removed from queue");
 			}
 		};
 
@@ -70,8 +98,8 @@
 			return isQueued
 				? Spicetify.Locale._dictionary["contextmenu.remove-from-queue"] || "Remove from queue"
 				: isShiftPressed
-				? "Play next in queue"
-				: Spicetify.Locale._dictionary["contextmenu.add-to-queue"] || "Add to queue";
+				? (swapBehavior ? addToQueueText : "Play next in queue")
+				: (swapBehavior ? "Play next in queue" : addToQueueText);
 		};
 
 		Spicetify.React.useEffect(() => {
@@ -105,7 +133,7 @@
 			} else if (tippyInstance) {
 				tippyInstance.setProps({ content: getTooltipContent() });
 			}
-		}, [isQueued, isShiftPressed, tippyInstance]);
+		}, [isQueued, isShiftPressed, tippyInstance, swapBehavior]);
 
 		// Render
 		return Spicetify.React.createElement(
@@ -254,7 +282,8 @@
 							Spicetify.React.createElement(QueueButton, {
 								uri,
 								classList: entryPoint.classList,
-								leftSide: placeLeftSide
+								leftSide: placeLeftSide,
+								swapBehavior: swapBehavior
 							}),
 							queueButtonElement
 						);
