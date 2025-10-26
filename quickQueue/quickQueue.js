@@ -95,11 +95,14 @@
 		};
 
 		const getTooltipContent = () => {
-			return isQueued
-				? Spicetify.Locale._dictionary["contextmenu.remove-from-queue"] || "Remove from queue"
-				: isShiftPressed
-				? (swapBehavior ? addToQueueText : "Play next in queue")
-				: (swapBehavior ? "Play next in queue" : addToQueueText);
+			if (isQueued) {
+				return removeFromQueueText;
+			}
+			
+			const leftClickAction = swapBehavior ? "Play next in queue" : addToQueueText;
+			const rightClickAction = swapBehavior ? addToQueueText : "Play next in queue";
+			
+			return `Left click: ${leftClickAction} | Right click: ${rightClickAction}`;
 		};
 
 		Spicetify.React.useEffect(() => {
